@@ -139,9 +139,16 @@ def profile():
         db.commit()
         flash('프로필이 업데이트되었습니다.')
         return redirect(url_for('profile'))
+    
+    # 내 정보 가져오기
     cursor.execute("SELECT * FROM user WHERE id = ?", (session['user_id'],))
     current_user = cursor.fetchone()
-    return render_template('profile.html', user=current_user)
+
+    # 내가 등록한 상품 가져오기
+    cursor.execute("SELECT * FROM product WHERE seller_id = ?", (session['user_id'],))
+    my_products = cursor.fetchall()
+
+    return render_template('profile.html', user=current_user, products=my_products)
 
 # 상품 등록
 @app.route('/product/new', methods=['GET', 'POST'])
@@ -163,6 +170,57 @@ def new_product():
         flash('상품이 등록되었습니다.')
         return redirect(url_for('dashboard'))
     return render_template('new_product.html')
+
+# 상품 삭제
+@app.route('/product/delete/<product_id>', methods=['GET'])
+def delete_product(product_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    db = get_db()
+    cursor = db.cursor()
+    
+    # 해당 상품을 만든 사람만 삭제 가능
+    cursor.execute("SELECT * FROM product WHERE id = ? AND seller_id = ?", (product_id, session['user_id']))
+    product = cursor.fetchone()
+    
+    if not product:
+        flash('상품을 삭제할 수 없습니다.')
+        return redirect(url_for('profile'))
+    
+    cursor.execute("DELETE FROM product WHERE id = ?", (product_id,))
+    db.commit()
+    flash('상품이 삭제되었습니다.')
+    return redirect(url_for('profile'))
+
+# 상품 수정
+@app.route('/product/edit/<product_id>', methods=['GET', 'POST'])
+def edit_product(product_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    db = get_db()
+    cursor = db.cursor()
+
+    # 내 상품인지 확인
+    cursor.execute("SELECT * FROM product WHERE id = ? AND seller_id = ?", (product_id, session['user_id']))
+    product = cursor.fetchone()
+
+    if not product:
+        flash('상품을 수정할 수 없습니다.')
+        return redirect(url_for('profile'))
+
+    if request.method == 'POST':
+        title = request.form['title']
+        description = request.form['description']
+        price = request.form['price']
+        cursor.execute("UPDATE product SET title = ?, description = ?, price = ? WHERE id = ?", 
+                       (title, description, price, product_id))
+        db.commit()
+        flash('상품이 수정되었습니다.')
+        return redirect(url_for('profile'))
+
+    # GET 방식일 때 수정 폼 보여주기
+    return render_template('edit_product.html', product=product)
+
 
 # 상품 상세보기
 @app.route('/product/<product_id>')
