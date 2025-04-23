@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}{{ product.title }} - 채팅{% endblock %}
+{% block content %}
+<h2>💬 {{ product.title }} - 채팅</h2>
+<p>판매자: {{ seller.username }}</p>
+
+<div id="chat">
+  <ul id="messages"></ul>
+  <input id="chat_input" type="text" placeholder="메시지를 입력하세요">
+  <button onclick="sendMessage()">전송</button>
+</div>
+
+<script type="text/javascript">
+  var socket = io();
+  socket.on('connect', function() {
+    console.log("채팅 연결됨");
+  });
+
+  socket.on('message', function(data) {
+    var messages = document.getElementById('messages');
+    var item = document.createElement('li');
+    item.textContent = data.username + ": " + data.message;
+    messages.appendChild(item);
+    window.scrollTo(0, document.body.scrollHeight);
+  });
+
+  function sendMessage() {
+    var input = document.getElementById('chat_input');
+    var message = input.value;
+    if (message) {
+      socket.emit('send_message', {
+        'username': "{{ session.get('user_id') }}",
+        'message': message
+      });
+      input.value = "";
+    }
+  }
+</script>
+{% endblock %}

@@ -304,11 +304,50 @@ def change_password():
 
     return redirect(url_for('profile'))
 
+# 판매자와 채팅하기
+@app.route('/chat/<product_id>')
+def chat(product_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute("SELECT * FROM product WHERE id = ?", (product_id,))
+    product = cursor.fetchone()
+
+    if not product:
+        flash('상품을 찾을 수 없습니다.')
+        return redirect(url_for('dashboard'))
+
+    # 판매자 정보도 가져오기
+    cursor.execute("SELECT * FROM user WHERE id = ?", (product['seller_id'],))
+    seller = cursor.fetchone()
+
+    return render_template('chat.html', product=product, seller=seller)
+
 # 실시간 채팅: 클라이언트가 메시지를 보내면 전체 브로드캐스트
 @socketio.on('send_message')
 def handle_send_message_event(data):
-    data['message_id'] = str(uuid.uuid4())
-    send(data, broadcast=True)
+    db = get_db()
+    cursor = db.cursor()
+
+    # session의 user_id를 이용해 username 가져오기
+    user_id = session.get('user_id')
+    if not user_id:
+        return  # 로그인 안 되어있으면 메시지 안 보냄
+
+    cursor.execute("SELECT username FROM user WHERE id = ?", (user_id,))
+    user = cursor.fetchone()
+    username = user['username'] if user else '알 수 없음'
+
+    # username 포함해서 메시지 전송
+    send({
+        'message_id': str(uuid.uuid4()),
+        'username': username,
+        'message': data.get('message')
+    }, broadcast=True)
+
 
 if __name__ == '__main__':
     init_db()  # 앱 컨텍스트 내에서 테이블 생성

@@ -8,6 +8,15 @@
 <p>{{ product.description }}</p>
 <p>가격: {{ product.price }}</p>
 <p>판매자: {{ seller.username if seller else '알 수 없음' }}</p>
+
+{% if session.get('user_id') != product.seller_id %}
+  <p>
+    <a href="{{ url_for('chat', product_id=product.id) }}">
+      💬 판매자와 채팅하기
+    </a>
+  </p>
+{% endif %}
+
 {% endblock %}
 
 
