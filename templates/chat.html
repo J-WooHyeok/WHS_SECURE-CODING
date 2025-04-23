@@ -5,9 +5,13 @@
 <p>판매자: {{ seller.username }}</p>
 
 <div id="chat">
-  <ul id="messages"></ul>
-  <input id="chat_input" type="text" placeholder="메시지를 입력하세요">
-  <button onclick="sendMessage()">전송</button>
+    <ul id="messages">
+        {% for chat in chat_history %}
+            <li><strong>{{ chat.username }}</strong>: {{ chat.message }}</li>
+        {% endfor %}
+    </ul>      
+    <input id="chat_input" type="text" placeholder="메시지를 입력하세요">
+    <button onclick="sendMessage()">전송</button>
 </div>
 
 <script type="text/javascript">
@@ -25,15 +29,16 @@
   });
 
   function sendMessage() {
-    var input = document.getElementById('chat_input');
-    var message = input.value;
-    if (message) {
-      socket.emit('send_message', {
-        'username': "{{ session.get('user_id') }}",
-        'message': message
-      });
-      input.value = "";
-    }
+  var input = document.getElementById('chat_input');
+  var message = input.value;
+  if (message) {
+    socket.emit('send_message', {
+      'message': message,
+      'product_id': "{{ product.id }}"
+    });
+    input.value = "";
   }
+}
+
 </script>
 {% endblock %}

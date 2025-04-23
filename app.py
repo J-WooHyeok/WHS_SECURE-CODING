@@ -316,37 +316,53 @@ def chat(product_id):
     cursor.execute("SELECT * FROM product WHERE id = ?", (product_id,))
     product = cursor.fetchone()
 
-    if not product:
-        flash('상품을 찾을 수 없습니다.')
-        return redirect(url_for('dashboard'))
-
-    # 판매자 정보도 가져오기
     cursor.execute("SELECT * FROM user WHERE id = ?", (product['seller_id'],))
     seller = cursor.fetchone()
 
-    return render_template('chat.html', product=product, seller=seller)
+    # 이전 채팅 불러오기
+    cursor.execute("""
+        SELECT username, message, timestamp FROM chat_message
+        WHERE product_id = ?
+        ORDER BY timestamp ASC
+    """, (product_id,))
+    chat_history = cursor.fetchall()
 
-# 실시간 채팅: 클라이언트가 메시지를 보내면 전체 브로드캐스트
+    return render_template('chat.html', product=product, seller=seller, chat_history=chat_history)
+
+
+# 실시간 채팅: 전체 채팅, 판매자 채팅
 @socketio.on('send_message')
 def handle_send_message_event(data):
     db = get_db()
     cursor = db.cursor()
 
-    # session의 user_id를 이용해 username 가져오기
     user_id = session.get('user_id')
     if not user_id:
-        return  # 로그인 안 되어있으면 메시지 안 보냄
+        return
 
     cursor.execute("SELECT username FROM user WHERE id = ?", (user_id,))
     user = cursor.fetchone()
     username = user['username'] if user else '알 수 없음'
 
-    # username 포함해서 메시지 전송
+    product_id = data.get('product_id')
+    message = data.get('message')
+    message_id = str(uuid.uuid4())
+
+    # ✅ product_id와 함께 DB에 저장
+    cursor.execute("""
+        INSERT INTO chat_message (id, product_id, username, message)
+        VALUES (?, ?, ?, ?)
+    """, (message_id, product_id, username, message))
+    db.commit()
+
+    # 클라이언트에 메시지 전송
     send({
-        'message_id': str(uuid.uuid4()),
+        'message_id': message_id,
         'username': username,
-        'message': data.get('message')
+        'message': message
     }, broadcast=True)
+
+
 
 
 if __name__ == '__main__':
