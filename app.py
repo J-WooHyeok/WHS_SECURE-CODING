@@ -1,12 +1,23 @@
 import sqlite3
 import uuid
+import os
+
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g
 from flask_socketio import SocketIO, send
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 DATABASE = 'market.db'
 socketio = SocketIO(app)
+
+UPLOAD_FOLDER = 'static/uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+# 사진 추가시 사진 이름 변경
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # 데이터베이스 연결 관리: 요청마다 연결 생성 후 사용, 종료 시 close
 def get_db():
@@ -155,21 +166,34 @@ def profile():
 def new_product():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+
     if request.method == 'POST':
         title = request.form['title']
         description = request.form['description']
         price = request.form['price']
+        image_file = request.files.get('image')
+        image_filename = None
+
+        if image_file and allowed_file(image_file.filename):
+            filename = secure_filename(image_file.filename)
+            image_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            image_file.save(image_path)
+            image_filename = filename
+
         db = get_db()
         cursor = db.cursor()
         product_id = str(uuid.uuid4())
+
         cursor.execute(
-            "INSERT INTO product (id, title, description, price, seller_id) VALUES (?, ?, ?, ?, ?)",
-            (product_id, title, description, price, session['user_id'])
+            "INSERT INTO product (id, title, description, price, seller_id, image_filename) VALUES (?, ?, ?, ?, ?, ?)",
+            (product_id, title, description, price, session['user_id'], image_filename)
         )
         db.commit()
         flash('상품이 등록되었습니다.')
         return redirect(url_for('dashboard'))
+
     return render_template('new_product.html')
+
 
 # 상품 삭제
 @app.route('/product/delete/<product_id>', methods=['GET'])
@@ -257,6 +281,29 @@ def report():
         return redirect(url_for('dashboard'))
     return render_template('report.html')
 
+# 비밀번호 변경
+@app.route('/change_password', methods=['POST'])
+def change_password():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    current_password = request.form['current_password']
+    new_password = request.form['new_password']
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute("SELECT password FROM user WHERE id = ?", (session['user_id'],))
+    user = cursor.fetchone()
+
+    if user and user['password'] == current_password:
+        cursor.execute("UPDATE user SET password = ? WHERE id = ?", (new_password, session['user_id']))
+        db.commit()
+        flash('비밀번호가 성공적으로 변경되었습니다.')
+    else:
+        flash('현재 비밀번호가 일치하지 않습니다.')
+
+    return redirect(url_for('profile'))
+
 # 실시간 채팅: 클라이언트가 메시지를 보내면 전체 브로드캐스트
 @socketio.on('send_message')
 def handle_send_message_event(data):
@@ -266,3 +313,8 @@ def handle_send_message_event(data):
 if __name__ == '__main__':
     init_db()  # 앱 컨텍스트 내에서 테이블 생성
     socketio.run(app, debug=True)
+
+
+
+
+
