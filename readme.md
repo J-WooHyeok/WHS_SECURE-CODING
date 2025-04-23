@@ -27,12 +27,16 @@ Flask + SQLite 기반 중고거래 웹 플랫폼입니다.
 ```bash
 git clone [깃허브 저장소 주소]
 ```
-2. 프로젝트 실행
+2. bcrypt install
+```bash
+pip install bcrypt
+```
+3. 프로젝트 실행
 ```bash
 cd [프로젝트 폴더명]
 python app.py
 ```
-3. 서버 실행  
+4. 서버 실행  
 http://127.0.0.1:5000
 
 ## 📎 참고  
