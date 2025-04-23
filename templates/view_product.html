@@ -1,22 +1,30 @@
 {% extends "base.html" %}
 {% block title %}상품 상세보기{% endblock %}
 {% block content %}
-<h2>{{ product.title }}</h2>
-{% if product.image_filename %}
-  <img src="{{ url_for('static', filename='uploads/' ~ product.image_filename) }}" alt="상품 이미지" width="300">
-{% endif %}
-<p>{{ product.description }}</p>
-<p>가격: {{ product.price }}</p>
-<p>판매자: {{ seller.username if seller else '알 수 없음' }}</p>
 
-{% if session.get('user_id') != product.seller_id %}
-  <p>
-    <a href="{{ url_for('chat', product_id=product.id) }}">
-      💬 판매자와 채팅하기
-    </a>
-  </p>
+{% if report_count >= 3 %}
+  <h2 style="color:red;">🚫 신고 횟수가 많아 삭제된 상품입니다.</h2>
+{% else %}
+  <h2>{{ product.title }}</h2>
+  {% if product.image_filename %}
+    <img src="{{ url_for('static', filename='uploads/' ~ product.image_filename) }}" alt="상품 이미지" width="300">
+  {% endif %}
+  <p>{{ product.description }}</p>
+  <p>가격: {{ product.price }}</p>
+  <p>판매자: {{ seller.username if seller else '알 수 없음' }}</p>
+
+  {% if session.get('user_id') != product.seller_id %}
+    <p>
+      <a href="{{ url_for('chat', product_id=product.id) }}">
+        💬 판매자와 채팅하기
+      </a>
+    </p>
+    <p>
+      <a href="{{ url_for('report') }}?target_id={{ product.id }}">
+        🚨 이 상품 신고하기
+      </a>
+    </p>
+  {% endif %}
 {% endif %}
 
 {% endblock %}
-
-

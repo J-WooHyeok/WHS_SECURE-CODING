@@ -1,6 +1,7 @@
 import sqlite3
 import uuid
 import os
+import bcrypt
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash, g
 from flask_socketio import SocketIO, send
@@ -68,6 +69,14 @@ def init_db():
         """)
         db.commit()
 
+# 신고 횟수 조회 함수
+def get_report_count_by_target(target_id):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT COUNT(*) FROM report WHERE target_id = ?", (target_id,))
+    result = cursor.fetchone()
+    return result[0] if result else 0
+
 # 기본 라우트
 @app.route('/')
 def index():
@@ -89,8 +98,9 @@ def register():
             flash('이미 존재하는 사용자명입니다.')
             return redirect(url_for('register'))
         user_id = str(uuid.uuid4())
+        hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
         cursor.execute("INSERT INTO user (id, username, password) VALUES (?, ?, ?)",
-                       (user_id, username, password))
+                       (user_id, username, hashed_pw))
         db.commit()
         flash('회원가입이 완료되었습니다. 로그인 해주세요.')
         return redirect(url_for('login'))
@@ -104,9 +114,9 @@ def login():
         password = request.form['password']
         db = get_db()
         cursor = db.cursor()
-        cursor.execute("SELECT * FROM user WHERE username = ? AND password = ?", (username, password))
+        cursor.execute("SELECT * FROM user WHERE username = ?", (username,))
         user = cursor.fetchone()
-        if user:
+        if user and bcrypt.checkpw(password.encode('utf-8'), user['password']):
             session['user_id'] = user['id']
             flash('로그인 성공!')
             return redirect(url_for('dashboard'))
@@ -253,33 +263,64 @@ def view_product(product_id):
     cursor = db.cursor()
     cursor.execute("SELECT * FROM product WHERE id = ?", (product_id,))
     product = cursor.fetchone()
+
     if not product:
         flash('상품을 찾을 수 없습니다.')
         return redirect(url_for('dashboard'))
-    # 판매자 정보 조회
+
+    # 판매자 정보
     cursor.execute("SELECT * FROM user WHERE id = ?", (product['seller_id'],))
     seller = cursor.fetchone()
-    return render_template('view_product.html', product=product, seller=seller)
+
+    # ✅ 해당 상품의 신고 수 조회
+    report_count = get_report_count_by_target(product_id)
+
+    return render_template(
+        'view_product.html',
+        product=product,
+        seller=seller,
+        report_count=report_count
+    )
+
 
 # 신고하기
 @app.route('/report', methods=['GET', 'POST'])
 def report():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+
+    db = get_db()
+    cursor = db.cursor()
+
     if request.method == 'POST':
         target_id = request.form['target_id']
         reason = request.form['reason']
-        db = get_db()
-        cursor = db.cursor()
+
         report_id = str(uuid.uuid4())
         cursor.execute(
             "INSERT INTO report (id, reporter_id, target_id, reason) VALUES (?, ?, ?, ?)",
             (report_id, session['user_id'], target_id, reason)
         )
         db.commit()
+
+        # ✅ 사용자 신고 누적 확인 및 휴면 처리
+        cursor.execute("SELECT * FROM user WHERE id = ?", (target_id,))
+        reported_user = cursor.fetchone()
+
+        if reported_user:
+            count = get_report_count_by_target(target_id)
+            if count >= 5:
+                cursor.execute("UPDATE user SET status = 'dormant' WHERE id = ?", (target_id,))
+                db.commit()
+                flash('신고 누적으로 해당 사용자가 휴면 계정으로 전환되었습니다.')
+
         flash('신고가 접수되었습니다.')
         return redirect(url_for('dashboard'))
-    return render_template('report.html')
+
+    # GET 요청일 경우: 쿼리 파라미터로 target_id 전달됨
+    target_id = request.args.get('target_id', '')
+    return render_template('report.html', target_id=target_id)
+
 
 # 비밀번호 변경
 @app.route('/change_password', methods=['POST'])
@@ -289,20 +330,22 @@ def change_password():
 
     current_password = request.form['current_password']
     new_password = request.form['new_password']
+
     db = get_db()
     cursor = db.cursor()
-
     cursor.execute("SELECT password FROM user WHERE id = ?", (session['user_id'],))
     user = cursor.fetchone()
 
-    if user and user['password'] == current_password:
-        cursor.execute("UPDATE user SET password = ? WHERE id = ?", (new_password, session['user_id']))
+    if user and bcrypt.checkpw(current_password.encode('utf-8'), user['password']):
+        new_hashed_pw = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+        cursor.execute("UPDATE user SET password = ? WHERE id = ?", (new_hashed_pw, session['user_id']))
         db.commit()
         flash('비밀번호가 성공적으로 변경되었습니다.')
     else:
         flash('현재 비밀번호가 일치하지 않습니다.')
 
     return redirect(url_for('profile'))
+
 
 # 판매자와 채팅하기
 @app.route('/chat/<product_id>')
